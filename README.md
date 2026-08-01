@@ -1,5 +1,8 @@
 # NG.Velox v2.0.2
 
+[![NuGet Version](https://img.shields.io/nuget/v/MachineGate.NG.Velox?label=NuGet)](https://www.nuget.org/packages/MachineGate.NG.Velox)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/MachineGate.NG.Velox?label=Downloads)](https://www.nuget.org/packages/MachineGate.NG.Velox)
+
 Zero-allocation, high-performance G-code processing pipeline for CNC kinematics, trajectory planning, and real-time interpolation.
 
 `NG.Velox` is a systems-level .NET library designed to parse, interpret, plan, and interpolate G-code with native C/C++ performance. It is built for mission-critical environments where Garbage Collection (GC) pauses are unacceptable, such as real-time CNC controllers, edge computing, and high-throughput CAM simulations.
