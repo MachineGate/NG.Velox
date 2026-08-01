@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="benchmarks/NG.Velox.Benchmarks/NG.Velox.Benchmarks.csproj" />
+  <Project Path="examples/NG.Velox.Examples/NG.Velox.Examples.csproj" />
+  <Project Path="tests/NG.Velox.Tests/NG.Velox.Tests.csproj" />
+  <Project Path="src/NG.Velox/NG.Velox.csproj" />
+</Solution>
