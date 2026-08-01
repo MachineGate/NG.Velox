@@ -137,53 +137,6 @@ finally
 }
 ```
 
-## 📸 Visual Validation
-
-The mathematical correctness of the kinematics, S-curves, and arc interpolation is validated against industry-standard software.
-
-**1. Source G-Code Snippet:**
-```gcode
-(Complex arc and linear moves)
-G00 X0.000 Y0.000 Z0.000 F100.000
-G00 Z200.000
-G00 X100.000 Y100.000 Z200.000
-G00 X100.000 Y100.000 Z100.000
-F100.000
-G17
-G03 X120.000 Y80.000 R20.000
-G03 X100.000 Y60.000 R20.000
-G03 X80.000 Y80.000 R20.000
-G03 X100.000 Y100.000 R20.000
-G03 X120.000 Y80.000 R20.000
-G02 X80.000 Y80.000 R20
-G02 X120.000 Y80.000 R20
-G18
-G03 X100.000 Z120.000 R20.000
-G03 X80.000 Z100.000 R20.000
-G03 X100.000 Z80.000 R20.000
-G03 X120.000 Z100.000 R20.000
-G02 X80.000 Z100.000 R20.000
-G02 X120.000 Z100.000 R20.000
-G17
-G03 X100 Y100 R20
-G19
-G02 Y80 Z120 R20
-G02 Y60 Z100 R20
-G02 Y80 Z80 R20
-G02 Y100 Z100 R20
-G03 Y60 Z100 R20
-G03 Y100 Z100 R20
-G00 X100.000 Y100.000 Z200.0
-```
-
-**2. NG.Velox Interpolation Output (NumPy/Matplotlib):**
-
-![NumPy Validation](./docs/images/numpy_validation.png)
-
-**3. Ethalon Validation (CIMCO Edit):**
-
-![CIMCO Ethalon](./docs/images/cimco_ethalon.png)
-
 ## ⚙️ Technical Highlights for Systems Devs
 
 - **Custom Arena Allocator**: `MemoryArena` provides O(1) linear allocation with strict alignment guarantees via `NativeMemory.Alloc`, bypassing the .NET GC entirely.
@@ -203,3 +156,6 @@ dotnet add package MachineGate.NG.Velox --version 2.0.4
 ## 🤝 Contributing
 
 This is a systems-level project. Contributions regarding mathematical edge-cases, SIMD vectorization for the interpolator, or NativeAOT compatibility tests are highly welcome. Please open an issue first to discuss the architectural impact.
+
+> ⚠️ **Validation graphs are not displayed on NuGet.org** due to a rendering issue with embedded PNG images.  
+> You can view the full documentation with all plots on [GitHub](https://github.com/MachineGate/NG.Velox).
