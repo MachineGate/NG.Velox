@@ -178,11 +178,11 @@ G00 X100.000 Y100.000 Z200.0
 
 **2. NG.Velox Interpolation Output (NumPy/Matplotlib):**
 
-![NumPy Validation](./numpy_validation.png)
+![NumPy Validation](./docs/images/numpy_validation.png)
 
 **3. Ethalon Validation (CIMCO Edit):**
 
-![CIMCO Ethalon](./cimco_ethalon.png)
+![CIMCO Ethalon](./docs/images/cimco_ethalon.png)
 
 ## ⚙️ Technical Highlights for Systems Devs
 
