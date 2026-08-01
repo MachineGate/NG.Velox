@@ -194,7 +194,7 @@ G00 X100.000 Y100.000 Z200.0
 ## 📦 Installation
 
 ```bash
-dotnet add package MachineGate.NG.Velox --version 1.0.0
+dotnet add package MachineGate.NG.Velox --version 2.0.0
 ```
 
 ## 🤝 Contributing
