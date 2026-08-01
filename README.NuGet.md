@@ -200,7 +200,3 @@ dotnet add package MachineGate.NG.Velox --version 2.0.2
 ## 🤝 Contributing
 
 This is a systems-level project. Contributions regarding mathematical edge-cases, SIMD vectorization for the interpolator, or NativeAOT compatibility tests are highly welcome. Please open an issue first to discuss the architectural impact.
-
-## ⚖️ License
-
-Distributed under the MIT License. See `LICENSE` for more information.
