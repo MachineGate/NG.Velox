@@ -1,30 +1,51 @@
+name: .NET CI & CD
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v[0-9]*'
+      - '[0-9]*'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+        
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/NG.Velox/NG.Velox.csproj
+        dotnet restore tests/NG.Velox.Tests/NG.Velox.Tests.csproj
+        dotnet restore benchmarks/NG.Velox.Benchmarks/NG.Velox.Benchmarks.csproj
+      
+    - name: Build
+      run: dotnet build src/NG.Velox/NG.Velox.csproj --no-restore -c Release
+      
+    - name: Test
+      run: dotnet test tests/NG.Velox.Tests/NG.Velox.Tests.csproj --no-restore -c Release
+
   publish-nuget:
     needs: build-and-test
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     
     permissions:
       id-token: write
-      contents: write
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-
-    - name: Update Version in README
-      run: |
-        CLEAN_VERSION=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
-        sed -i "s/\(dotnet add package MachineGate.NG.Velox --version \)[0-9]*\.[0-9]*\.[0-9]*\([-a-zA-Z0-9.]*\)*/\1$CLEAN_VERSION/g" README.md
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add README.md
-        git diff-index --quiet HEAD || (git commit -m "chore: update README version to $CLEAN_VERSION [skip ci]" && git push origin HEAD:${{ github.event.release.target_commitish }})
 
     - name: NuGet Login
       uses: NuGet/login@v1
@@ -33,14 +54,18 @@
         user: MachineGate
 
     - name: Pack library
-      env:
-        RELEASE_BODY: ${{ github.event.release.body }}
       run: |
-        CLEAN_VERSION=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+        RAW_TAG=${{ github.ref_name }}
+        CLEAN_VERSION=$(echo "$RAW_TAG" | sed 's/^v//')
+        
         dotnet pack src/NG.Velox/NG.Velox.csproj -c Release \
           /p:PackageId=MachineGate.NG.Velox \
           /p:PackageVersion=$CLEAN_VERSION \
-          /p:PackageReleaseNotes="$RELEASE_BODY"
+          /p:PackageReleaseNotes="Automated release for version $CLEAN_VERSION"
 
     - name: Push to NuGet
-      run: dotnet nuget push src/NG.Velox/bin/Release/*.nupkg --source https://api.nuget.org/v3/index.json
+      run: |
+        dotnet nuget push src/NG.Velox/bin/Release/*.nupkg \
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+          --source https://api.nuget.org/v3/index.json \
+          --skip-duplicate
