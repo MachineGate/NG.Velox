@@ -14,7 +14,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="../../README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\README.NuGet.md" Pack="true" PackagePath="README.md" />
+    <None Include="..\..\docs\images\numpy_validation.png" Pack="true" PackagePath="\" />
+    <None Include="..\..\docs\images\cimco_ethalon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <PropertyGroup>
