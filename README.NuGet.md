@@ -1,4 +1,4 @@
-# MachineGate.NG.Velox v2.0.4
+# MachineGate.NG.Velox v2.1.0
 
 [![NuGet Version](https://img.shields.io/nuget/v/MachineGate.NG.Velox?label=NuGet)](https://www.nuget.org/packages/MachineGate.NG.Velox)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/MachineGate.NG.Velox?label=Downloads)](https://www.nuget.org/packages/MachineGate.NG.Velox)
@@ -158,7 +158,7 @@ finally
 ## 📦 Installation
 
 ```bash
-dotnet add package MachineGate.NG.Velox --version 2.0.4
+dotnet add package MachineGate.NG.Velox --version 2.1.0
 ```
 
 > ⚠️ **Validation graphs are not displayed on NuGet.org** due to a rendering issue with embedded PNG images.  
