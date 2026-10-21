@@ -114,5 +114,19 @@ namespace NG.Velox.Parsing.Data
             Length = length;
             Value = value;
         }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Node"/> structure bound to a structural block boundary marker.
+        /// </summary>
+        /// <param name="kind">The primary classification discriminator. Expected to be <see cref="NodeKind.NewLine"/>.</param>
+        /// <param name="start">The absolute tracking source text offset index of the newline character.</param>
+        /// <param name="length">The character stream slice block width (typically 1).</param>
+        public Node(NodeKind kind, int start, ushort length)
+        {
+            this = default;
+            Kind = kind;
+            Length = length;
+            Start = start;
+        }
     }
 }

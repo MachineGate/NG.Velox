@@ -9,21 +9,12 @@ namespace NG.Velox.Preprocessing.Core
     using NG.Velox.Preprocessing.Interfaces;
 
     /// <summary>
-    /// Removes comments, N-codes, and excess whitespace from G-code text.
-    /// Builds IndexMap for accurate error reporting.
+    /// Provides an unsafe, high-performance preprocessor that copies characters from <see cref="ReadOnlyMemory{T}"/> 
+    /// into an arena-allocated unmanaged memory buffer.
     /// </summary>
     /// <remarks>
-    /// <b>Removal rules:</b>
-    /// <list type="bullet">
-    /// <item><c>(...)</c> - parenthesized comments (any content, including newlines)</item>
-    /// <item><c>;...</c> - line comments (until newline)</item>
-    /// <item><c>N123</c> - line numbers (N followed by digits)</item>
-    /// <item>Spaces, tabs, <c>\r</c> - whitespace</item>
-    /// </list>
-    /// <para><b>CRITICAL:</b> <c>\n</c> is PRESERVED (not removed). Interpreter uses it
-    /// to count lines and split blocks. If you remove \n, block separation breaks.</para>
-    /// <para><b>IndexMap:</b> For each clean char at index <c>i</c>, <c>IndexMap[i]</c> = original index.
-    /// Used by SourceMapper to translate error positions back to user's file.</para>
+    /// This class uses raw pointers and stack/arena allocation strategies for zero-allocation 
+    /// and maximum throughput during text preprocessing.
     /// </remarks>
     internal unsafe sealed class VeloxMemoryPreprocessor : IVeloxPreprocessor<ReadOnlyMemory<char>>
     {
@@ -37,59 +28,14 @@ namespace NG.Velox.Preprocessing.Core
 
             if (length == 0)
             {
-                context.PreprocessingResult = new PreprocessingResult(null, null, 0);
+                context.PreprocessingResult = new PreprocessingResult(null, 0);
                 return;
             }
 
             char* textBuffer = ArenaAllocator.Allocate<char>(ref context.Arena, length);
-            int* indexMapBuffer = ArenaAllocator.Allocate<int>(ref context.Arena, length);
+            span.CopyTo(new Span<char>(textBuffer, length));
 
-            int i = 0;
-            int writeOffset = 0;
-
-            fixed (char* srcPtr = span)
-            {
-                while (i < length)
-                {
-                    char c = srcPtr[i];
-
-                    if (c.Is(CharMask.OpenBracket))
-                    {
-                        i++;
-                        while (i < length && !srcPtr[i].Is(CharMask.CloseBracket)) i++;
-                        if (i < length) i++;
-                        continue;
-                    }
-
-                    if (c.Is(CharMask.Semicolon))
-                    {
-                        i++;
-                        while (i < length && !srcPtr[i].Is(CharMask.NewLine)) i++;
-                        continue;
-                    }
-
-                    if (c.Is(CharMask.Label) && i + 1 < length && srcPtr[i + 1].Is(CharMask.Digit))
-                    {
-                        i++;
-                        while (i < length && srcPtr[i].Is(CharMask.Digit)) i++;
-                        continue;
-                    }
-
-                    if (c.Is(CharMask.Whitespace))
-                    {
-                        i++;
-                        continue;
-                    }
-
-                    textBuffer[writeOffset] = c;
-                    indexMapBuffer[writeOffset] = i;
-
-                    writeOffset++;
-                    i++;
-                }
-            }
-
-            context.PreprocessingResult = new PreprocessingResult(textBuffer, indexMapBuffer, writeOffset);
+            context.PreprocessingResult = new PreprocessingResult(textBuffer, length);
         }
     }
 }

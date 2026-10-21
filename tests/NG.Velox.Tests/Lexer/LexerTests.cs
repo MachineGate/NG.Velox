@@ -25,7 +25,7 @@
 
                 new VeloxMemoryPreprocessor().Process(ref context, ref diag);
                 new VeloxLexer().Process(ref context, ref diag);
-                
+
                 PreprocessingResult preResult = context.PreprocessingResult;
                 LexingResult result = context.LexingResult;
 
@@ -51,7 +51,6 @@
                 new VeloxMemoryPreprocessor().Process(ref context, ref diag);
                 new VeloxLexer().Process(ref context, ref diag);
 
-                PreprocessingResult preResult = context.PreprocessingResult;
                 LexingResult result = context.LexingResult;
 
                 Assert.AreEqual(4, result.Length);
@@ -59,6 +58,7 @@
                 Assert.AreEqual(TokenKind.Number, result[1].Kind);
                 Assert.AreEqual(TokenKind.Address, result[2].Kind);
                 Assert.AreEqual(TokenKind.Number, result[3].Kind);
+                Assert.IsFalse(diag.HasErrors);
             }
             finally
             {
@@ -79,11 +79,11 @@
                 new VeloxMemoryPreprocessor().Process(ref context, ref diag);
                 new VeloxLexer().Process(ref context, ref diag);
 
-                PreprocessingResult preResult = context.PreprocessingResult;
                 LexingResult result = context.LexingResult;
 
                 Assert.IsTrue(diag.HasErrors);
                 Assert.AreEqual(101, diag.Diagnostics[0].Code);
+                Assert.AreEqual(4, diag.Diagnostics[0].Start);
             }
             finally
             {
@@ -92,7 +92,7 @@
         }
 
         [TestMethod]
-        public void Tokenize_CommentsAndSpaces_AreIgnoredButIndexMapped()
+        public void Tokenize_CommentsAndSpaces_DirectPositionReported()
         {
             MemoryArena arena = new(DEFAULT_ARENA_SIZE);
             try
@@ -104,13 +104,288 @@
                 new VeloxMemoryPreprocessor().Process(ref context, ref diag);
                 new VeloxLexer().Process(ref context, ref diag);
 
-                PreprocessingResult preResult = context.PreprocessingResult;
                 LexingResult result = context.LexingResult;
 
                 Assert.IsTrue(diag.HasErrors);
                 Assert.AreEqual(101, diag.Diagnostics[0].Code);
 
                 Assert.AreEqual(14, diag.Diagnostics[0].Start);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_ParenthesesComment_SkippedWithoutNewline()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "G01 (comment) X10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(4, result.Length);
+                Assert.AreEqual(TokenKind.Address, result[0].Kind);
+                Assert.AreEqual(TokenKind.Number, result[1].Kind);
+                Assert.AreEqual(TokenKind.Address, result[2].Kind);
+                Assert.AreEqual(TokenKind.Number, result[3].Kind);
+
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_SemicolonComment_NewlinePreserved()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "G01 ;comment\nX10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(5, result.Length);
+                Assert.AreEqual(TokenKind.Address, result[0].Kind);
+                Assert.AreEqual(TokenKind.Number, result[1].Kind);
+                Assert.AreEqual(TokenKind.NewLine, result[2].Kind);
+                Assert.AreEqual(12, result[2].Start);
+                Assert.AreEqual(TokenKind.Address, result[3].Kind);
+                Assert.AreEqual(TokenKind.Number, result[4].Kind);
+
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_MultiLineParenthesesComment_NoNewlineInsideComment()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "(a\nb\nc)\nG01X10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(5, result.Length);
+                Assert.AreEqual(TokenKind.NewLine, result[0].Kind);
+                Assert.AreEqual(7, result[0].Start);
+                Assert.AreEqual(TokenKind.Address, result[1].Kind);
+                Assert.AreEqual(TokenKind.Number, result[2].Kind);
+                Assert.AreEqual(TokenKind.Address, result[3].Kind);
+                Assert.AreEqual(TokenKind.Number, result[4].Kind);
+
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_NCodeSkipped()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "N10 G01 N20X10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(4, result.Length);
+                Assert.AreEqual(TokenKind.Address, result[0].Kind);
+                Assert.AreEqual(4, result[0].Start);
+                Assert.AreEqual(TokenKind.Number, result[1].Kind);
+                Assert.AreEqual(TokenKind.Address, result[2].Kind);
+                Assert.AreEqual(11, result[2].Start);
+                Assert.AreEqual(TokenKind.Number, result[3].Kind);
+
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_TrailingSemicolonComment_NoExtraTokens()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "G01 ;trailing without newline".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(2, result.Length);
+                Assert.AreEqual(TokenKind.Address, result[0].Kind);
+                Assert.AreEqual(TokenKind.Number, result[1].Kind);
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_CrLf_EmitsSingleNewLine()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "G01\r\nX10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(5, result.Length);
+                Assert.AreEqual(TokenKind.NewLine, result[2].Kind);
+                Assert.AreEqual(4, result[2].Start);
+                Assert.AreEqual(TokenKind.Address, result[3].Kind);
+                Assert.AreEqual(TokenKind.Number, result[4].Kind);
+
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_MultipleNewlines_EmitsEachToken()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "G01\n\n\nX10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(7, result.Length);
+                Assert.AreEqual(TokenKind.Address, result[0].Kind);
+                Assert.AreEqual(TokenKind.Number, result[1].Kind);
+                Assert.AreEqual(TokenKind.NewLine, result[2].Kind);
+                Assert.AreEqual(TokenKind.NewLine, result[3].Kind);
+                Assert.AreEqual(TokenKind.NewLine, result[4].Kind);
+                Assert.AreEqual(TokenKind.Address, result[5].Kind);
+                Assert.AreEqual(TokenKind.Number, result[6].Kind);
+
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_DirectAbsolutePositions_NoIndexMapRequired()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "  G01 (c) X10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(4, result.Length);
+
+                Assert.AreEqual(TokenKind.Address, result[0].Kind);
+
+                Assert.AreEqual(TokenKind.Number, result[1].Kind);
+                Assert.AreEqual(2, result[1].Length);
+
+                Assert.AreEqual(TokenKind.Address, result[2].Kind);
+
+                Assert.AreEqual(TokenKind.Number, result[3].Kind);
+                Assert.AreEqual(2, result[3].Length);
+
+                Assert.IsFalse(diag.HasErrors);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Tokenize_NumberToken_HasCorrectLength()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "X-10.5E2".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+                new VeloxLexer().Process(ref context, ref diag);
+
+                LexingResult result = context.LexingResult;
+
+                Assert.AreEqual(2, result.Length);
+
+                Assert.AreEqual(TokenKind.Address, result[0].Kind);
+                Assert.AreEqual(1, result[0].Length);
+
+                Assert.AreEqual(TokenKind.Number, result[1].Kind);
+                Assert.AreEqual(1, result[1].Start);
+                Assert.AreEqual(7, result[1].Length);
+
+                Assert.IsFalse(diag.HasErrors);
             }
             finally
             {

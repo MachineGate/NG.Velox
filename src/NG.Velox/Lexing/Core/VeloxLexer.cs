@@ -11,15 +11,15 @@ namespace NG.Velox.Lexing.Core
     using NG.Velox.Preprocessing.Data;
 
     /// <summary>
-    /// Tokenizes preprocessed G-code text into Address/Number tokens using raw unmanaged pointer arithmetic without collection wrappers.
-    /// Uses <see cref="CharRegistry"/> for O(1) character classification and maximizes CPU L1i/L2 cache efficiency.
+    /// Tokenizes raw G-code text into Address/Number/NewLine tokens using raw unmanaged pointer arithmetic
+    /// while performing inline comment, line-number, and whitespace filtering.
     /// </summary>
     /// <remarks>
-    /// <b>Input:</b> Immutable preprocessed text buffer (no comments, no N-codes, minimal whitespace).
-    /// <b>Output:</b> Strictly immutable sequence of tokens with absolute start positions and lengths.
+    /// <b>Input:</b> Unmodified raw text buffer staged in the arena by the preprocessor.
+    /// <b>Output:</b> Strictly immutable sequence of tokens with absolute source positions.
     /// <para/>
-    /// <b>Error 101:</b> Unknown symbol (not qualified by CharRegistry). Reported with its original index 
-    /// mapped back via the unmanaged source index map buffer.
+    /// <b>Error 101:</b> Unknown symbol (not qualified by <see cref="CharRegistry"/> and not recognized as trivia). 
+    /// The reported index is the direct absolute position inside the original source buffer; no index map remapping is required.
     /// </remarks>
     internal sealed unsafe class VeloxLexer : IVeloxLexer
     {
@@ -29,7 +29,7 @@ namespace NG.Velox.Lexing.Core
             where TContext : struct, ILexingContext, allows ref struct
         {
             PreprocessingResult preprocessing = context.PreprocessingResult;
-            
+
             int textLength = preprocessing.Length;
 
             if (textLength == 0)
@@ -42,18 +42,24 @@ namespace NG.Velox.Lexing.Core
             char* pCurrent = textStartPtr;
             char* pEnd = textStartPtr + textLength;
 
-            int* indexMapPtr = preprocessing.IndexMapPtr;
-
             Token* tokensBuffer = ArenaAllocator.Allocate<Token>(ref context.Arena, textLength);
             int tokenCount = 0;
 
             while (pCurrent < pEnd)
             {
-                LexingHelper.SkipWhitespaces(ref pCurrent, pEnd);
+                LexingHelper.SkipTrivia(ref pCurrent, pEnd);
 
                 if (pCurrent >= pEnd) break;
 
                 int tokenStart = (int)(pCurrent - textStartPtr);
+
+                if ((*pCurrent).Is(CharMask.NewLine))
+                {
+                    tokensBuffer[tokenCount] = new Token(TokenKind.NewLine, tokenStart, 1);
+                    tokenCount++;
+                    pCurrent++;
+                    continue;
+                }
 
                 if (LexingHelper.TryReadAddress(pCurrent, pEnd))
                 {
@@ -71,11 +77,9 @@ namespace NG.Velox.Lexing.Core
                     continue;
                 }
 
-                int originalIndex = indexMapPtr[tokenStart];
-
                 diagnosticBag.Add(new Diagnostic(
                     code: 101,
-                    start: originalIndex,
+                    start: tokenStart,
                     length: 1,
                     severity: Severity.Error
                 ));

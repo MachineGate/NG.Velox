@@ -20,8 +20,8 @@
         Number,
 
         /// <summary>
-        /// Represents an unrecognized, invalid, or malformed character sequence that does not match standard G-code lexical grammar constraints.
+        /// Represents a structural block boundary marker emitted for a line feed character outside of any comment context.
         /// </summary>
-        Unknown
+        NewLine
     }
 }

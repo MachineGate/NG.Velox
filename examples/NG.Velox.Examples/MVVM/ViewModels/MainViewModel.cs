@@ -24,24 +24,37 @@ namespace NG.Velox.Examples
     public partial class MainViewModel : ObservableObject
     {
         private const string DEFAULT_G_CODE =
-            "N001 G00 F1800.000 Z100.000\r\n" +
-            "N002 X100.000 Y100.000 Z100.000\r\n" +
-            "N003 G03 X120.000 Y80.000 R20.000\r\n" +
-            "N004 X100.000 Y60.000 R20.000\r\n" +
-            "N005 X80.000 Y80.000 R20.000\r\n" +
-            "N006 X100.000 Y100.000 R20.000\r\n" +
-            "N007 Y60.000 R20.000\r\n" +
-            "N008 X120.000 Y80.000 R20.000\r\n" +
-            "N009 X100.000 Y100.000 R20.000\r\n" +
-            "N010 G00 X0.000 Y0.000";
-
-        /// <summary>
-        /// Initializes a new instance of <see cref="MainViewModel"/> class.
-        /// </summary>
-        public MainViewModel()
-        {
-            CodeText = DEFAULT_G_CODE;
-        }
+            "(Complex arc and linear moves)\r\n" +
+            "N001 G00 X0.000 Y0.000 Z0.000 F2000.000\r\n" +
+            "N002 G00 Z200.000\r\n" +
+            "N003 G00 X100.000 Y100.000 Z200.000\r\n" +
+            "N004 G00 X100.000 Y100.000 Z100.000\r\n" +
+            "N005 F1500.000\r\n" +
+            "N006 G17\r\n" +
+            "N007 G03 X120.000 Y80.000 R20.000\r\n" +
+            "N008 G03 X100.000 Y60.000 R20.000\r\n" +
+            "N009 G03 X80.000 Y80.000 R20.000\r\n" +
+            "N010 G03 X100.000 Y100.000 R20.000\r\n" +
+            "N011 G03 X120.000 Y80.000 R20.000\r\n" +
+            "N012 G02 X80.000 Y80.000 R20\r\n" +
+            "N013 G02 X120.000 Y80.000 R20\r\n" +
+            "N014 G18\r\n" +
+            "N015 G03 X100.000 Z120.000 R20.000\r\n" +
+            "N016 G03 X80.000 Z100.000 R20.000\r\n" +
+            "N017 G03 X100.000 Z80.000 R20.000\r\n" +
+            "N018 G03 X120.000 Z100.000 R20.000\r\n" +
+            "N019 G02 X80.000 Z100.000 R20.000\r\n" +
+            "N020 G02 X120.000 Z100.000 R20.000\r\n" +
+            "N021 G17\r\n" +
+            "N022 G03 X100.000 Y100.000 R20.000\r\n" +
+            "N023 G19\r\n" +
+            "N024 G02 Y80.000 Z120.000 R20.000\r\n" +
+            "N025 G02 Y60.000 Z100.000 R20.000\r\n" +
+            "N026 G02 Y80.000 Z80.000 R20.000\r\n" +
+            "N027 G02 Y100.000 Z100.000 R20.000\r\n" +
+            "N028 G03 Y60.000 Z100.000 R20.000\r\n" +
+            "N029 G03 Y100.000 Z100.000 R20.000\r\n" +
+            "N030 G00 X100.000 Y100.000 Z200.000";
 
         /// <summary>
         /// The cached linear list of interpolated toolpath points resulting from the G-code parsing.
@@ -62,6 +75,14 @@ namespace NG.Velox.Examples
         /// The total simulation time accumulated prior to the current active playback session, measured in seconds.
         /// </summary>
         private double _accumulatedTime = 0;
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="MainViewModel"/> class.
+        /// </summary>
+        public MainViewModel()
+        {
+            Code = DEFAULT_G_CODE;
+        }
 
         /// <summary>
         /// Gets or sets the current playback time of the simulation in seconds.
@@ -103,13 +124,13 @@ namespace NG.Velox.Examples
         /// Gets or sets the raw G-code text script inputted from the UI text editor panel.
         /// </summary>
         [ObservableProperty]
-        public partial string CodeText { get; set; } = string.Empty;
+        public partial string Code { get; set; } = string.Empty;
 
         /// <summary>
         /// Gets or sets the collection of localized pipeline diagnostic and parsing error log entries visible to the user interface.
         /// </summary>
         [ObservableProperty]
-        public partial ObservableCollection<string> ErrorsCollection { get; set; } = new();
+        public partial ObservableCollection<ErrorInfo> Errors { get; set; } = new();
 
         /// <summary>
         /// Gets or sets the maximum allowable axis acceleration rate for look-ahead profile generation.
@@ -247,11 +268,11 @@ namespace NG.Velox.Examples
         }
 
         /// <summary>
-        /// Invoked automatically whenever the raw <see cref="CodeText"/> block input gets updated.
+        /// Invoked automatically whenever the raw <see cref="Code"/> block input gets updated.
         /// Triggers a debouncing mechanism to prevent redundant execution and schedules an asynchronous G-code analysis phase.
         /// </summary>
         /// <param name="value">The updated block of raw G-code text instructions.</param>
-        partial void OnCodeTextChanged(string value)
+        partial void OnCodeChanged(string value)
         {
             _debounceCts?.Cancel();
             _debounceCts = new CancellationTokenSource();
@@ -265,7 +286,7 @@ namespace NG.Velox.Examples
         /// </summary>
         private void TriggerReparse()
         {
-            OnCodeTextChanged(CodeText);
+            OnCodeChanged(Code);
         }
 
         /// <summary>
@@ -292,15 +313,15 @@ namespace NG.Velox.Examples
         /// <param name="text">The source raw string content string containing industrial G-code blocks.</param>
         /// <param name="token">The cancellation token to cleanly stop the pipeline loops if editing occurs mid-parse.</param>
         /// <returns>A tuple struct containing the generated toolpath coordinates sequence and an error description collection.</returns>
-        private (List<TrajectoryPoint> Path, List<string> Errors) ParseCode(string text, CancellationToken token)
+        private (List<TrajectoryPoint> Path, List<ErrorInfo> Errors) ParseCode(string text, CancellationToken token)
         {
-            var localPath = new List<TrajectoryPoint>();
-            var localErrors = new List<string>();
+            List<TrajectoryPoint> localPath = new();
+            List<ErrorInfo> localErrors = new();
 
             if (string.IsNullOrWhiteSpace(text)) return (localPath, localErrors);
 
-            var diag = new DiagnosticBag();
-            var arena = new MemoryArena(1024 * 1024);
+            DiagnosticBag diag = new();
+            MemoryArena arena = new(1024 * 1024);
 
             try
             {
@@ -339,13 +360,21 @@ namespace NG.Velox.Examples
                     foreach (var diagnostic in diag.Diagnostics)
                     {
                         var (raw, column) = IndexMapper.GetRowColumn(input.Span, diagnostic.Start);
-                        localErrors.Add($"Pipeline error {diagnostic.Code} on raw {raw}, column {column}");
+                        localErrors.Add(new ErrorInfo(
+                            start: diagnostic.Start,
+                            length: diagnostic.Length,
+                            text: $"Pipeline error {diagnostic.Code} on raw {raw}, column {column}"
+                        ));
                     }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                localErrors.Add($"Critical pipeline error: {ex.Message}");
+                localErrors.Add(new ErrorInfo(
+                    start: 0,
+                    length:0,
+                    text: $"Critical pipeline error: {ex.Message}"
+                ));
             }
             finally
             {
@@ -360,7 +389,7 @@ namespace NG.Velox.Examples
         /// </summary>
         /// <param name="path">The freshly extracted sequential path point coordinate list.</param>
         /// <param name="errors">The corresponding tracking logs describing formatting exceptions or calculation errors.</param>
-        private void ApplyParsedResults(List<TrajectoryPoint> path, List<string> errors)
+        private void ApplyParsedResults(List<TrajectoryPoint> path, List<ErrorInfo> errors)
         {
             IsPlaying = false;
 
@@ -387,8 +416,9 @@ namespace NG.Velox.Examples
             TrajectoryPoints = points;
             InterpolatePosition(0);
 
-            ErrorsCollection.Clear();
-            foreach (var err in errors) ErrorsCollection.Add(err);
+            Errors.Clear();
+            foreach (var err in errors)
+                Errors.Add(err);
         }
 
         /// <summary>

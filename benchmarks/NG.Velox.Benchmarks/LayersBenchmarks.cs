@@ -41,7 +41,6 @@ namespace NG.Velox.Benchmarks
         private DiagnosticBag _runtimeBag;
 
         private unsafe char* _preprocessedTextPtr;
-        private unsafe int* _preprocessedIndexMapPtr;
         private int _preprocessedLength;
 
         private unsafe Token* _lexedTokensPtr;
@@ -98,7 +97,6 @@ namespace NG.Velox.Benchmarks
 
             PreprocessingResult preprocessed = context.PreprocessingResult;
             _preprocessedTextPtr = preprocessed.TextPtr;
-            _preprocessedIndexMapPtr = preprocessed.IndexMapPtr;
             _preprocessedLength = preprocessed.Length;
 
             LexingResult lexed = context.LexingResult;
@@ -164,7 +162,7 @@ namespace NG.Velox.Benchmarks
         {
             VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref _gCodeText, ref _runtimeArena)
             {
-                PreprocessingResult = new PreprocessingResult(_preprocessedTextPtr, _preprocessedIndexMapPtr, _preprocessedLength)
+                PreprocessingResult = new PreprocessingResult(_preprocessedTextPtr, _preprocessedLength)
             };
 
             _runtimeArena.Reset();
@@ -178,7 +176,7 @@ namespace NG.Velox.Benchmarks
         {
             VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref _gCodeText, ref _runtimeArena)
             {
-                PreprocessingResult = new PreprocessingResult(_preprocessedTextPtr, _preprocessedIndexMapPtr, _preprocessedLength),
+                PreprocessingResult = new PreprocessingResult(_preprocessedTextPtr, _preprocessedLength),
                 LexingResult = new LexingResult(_lexedTokensPtr, _lexedLength)
             };
 
@@ -193,7 +191,7 @@ namespace NG.Velox.Benchmarks
         {
             VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref _gCodeText, ref _runtimeArena)
             {
-                PreprocessingResult = new PreprocessingResult(_preprocessedTextPtr, _preprocessedIndexMapPtr, _preprocessedLength),
+                PreprocessingResult = new PreprocessingResult(_preprocessedTextPtr, _preprocessedLength),
                 ParsingResult = new ParsingResult(_parsedNodesPtr, _parsedLength)
             };
 

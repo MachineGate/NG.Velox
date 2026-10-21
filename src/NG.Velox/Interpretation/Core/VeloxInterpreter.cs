@@ -6,15 +6,14 @@ namespace NG.Velox.Interpretation.Core
     using NG.Velox.Context.Interfaces;
     using NG.Velox.Diagnostic.Core;
     using NG.Velox.Diagnostic.Data;
-    using NG.Velox.Interpretation.Data;
     using NG.Velox.Interpretation.Interfaces;
+    using NG.Velox.Interpretation.Data;
     using NG.Velox.Parsing.Data;
-    using NG.Velox.Preprocessing.Data;
 
     /// <summary>
-    /// Emulates a CNC virtual machine: tracks coordinates, feeds, motion modes,
-    /// planes, and machine state (M-codes) utilizing high-performance raw unmanaged pointer arithmetic.
-    /// Produces strictly aligned parallel <see cref="Frame"/> and <see cref="MachineFrame"/> datasets layout sequences.
+    /// Emulates a CNC virtual machine: tracks coordinates, feeds, motion modes, planes, and machine state (M-codes) 
+    /// utilizing high-performance raw unmanaged pointer arithmetic.
+    /// Frame boundaries are driven exclusively by <see cref="NodeKind.NewLine"/> markers emitted by the parser.
     /// </summary>
     /// <remarks>
     /// <b>Extension points:</b>
@@ -44,12 +43,6 @@ namespace NG.Velox.Interpretation.Core
                 return;
             }
 
-            PreprocessingResult preprocessing = context.PreprocessingResult;
-
-            char* textPtr = preprocessing.TextPtr;
-            int* indexMapPtr = preprocessing.IndexMapPtr;
-            int textLength = preprocessing.Length;
-
             Frame* framesBuffer = ArenaAllocator.Allocate<Frame>(ref context.Arena, nodesCount);
             MachineFrame* machineFramesBuffer = ArenaAllocator.Allocate<MachineFrame>(ref context.Arena, nodesCount);
             int frameCount = 0;
@@ -67,24 +60,13 @@ namespace NG.Velox.Interpretation.Core
             bool hasArcParams = false;
             uint machineFlags = 0;
             ModalGroupMask usedGroupsInFrame = ModalGroupMask.None;
-
-            int currentTextIndex = 0;
-            int currentRow = 1;
-            int currentFrameRow = 1;
+            bool pendingFrameContent = false;
 
             for (int i = 0; i < nodesCount; i++)
             {
                 ref readonly Node node = ref parsing[i];
 
-                while (currentTextIndex < node.Start && currentTextIndex < textLength)
-                {
-                    if (textPtr[currentTextIndex].Is(CharMask.NewLine)) currentRow++;
-                    currentTextIndex++;
-                }
-
-                int nodeRow = currentRow;
-
-                if (nodeRow != currentFrameRow)
+                if (node.Kind == NodeKind.NewLine)
                 {
                     if (hasArcParams && frameR != 0.0 && frameI == 0.0 && frameJ == 0.0 && frameK == 0.0)
                     {
@@ -97,10 +79,9 @@ namespace NG.Velox.Interpretation.Core
 
                     if (hasMotion && (activeMotionMode == 2 || activeMotionMode == 3) && !hasArcParams)
                     {
-                        int originalIndex = indexMapPtr[node.Start];
                         diagnosticBag.Add(new Diagnostic(
                             code: 302,
-                            start: originalIndex,
+                            start: node.Start,
                             length: node.Length,
                             severity: Severity.Error
                         ));
@@ -122,8 +103,11 @@ namespace NG.Velox.Interpretation.Core
                     hasArcParams = false;
                     usedGroupsInFrame = ModalGroupMask.None;
                     machineFlags = 0;
-                    currentFrameRow = nodeRow;
+                    pendingFrameContent = false;
+                    continue;
                 }
+
+                pendingFrameContent = true;
 
                 switch (node.Kind)
                 {
@@ -158,10 +142,9 @@ namespace NG.Velox.Interpretation.Core
                                 {
                                     if ((usedGroupsInFrame & gGroup) != 0)
                                     {
-                                        int originalIndex = indexMapPtr[node.Start];
                                         diagnosticBag.Add(new Diagnostic(
                                             code: 301,
-                                            start: originalIndex,
+                                            start: node.Start,
                                             length: node.Length,
                                             severity: Severity.Error
                                         ));
@@ -182,10 +165,9 @@ namespace NG.Velox.Interpretation.Core
                                     case 90: isAbsoluteDistance = true; break;
                                     case 91: isAbsoluteDistance = false; break;
                                     default:
-                                        int originalIndex = indexMapPtr[node.Start];
                                         diagnosticBag.Add(new Diagnostic(
                                             code: 303,
-                                            start: originalIndex,
+                                            start: node.Start,
                                             length: node.Length,
                                             severity: Severity.Error
                                         ));
@@ -200,10 +182,9 @@ namespace NG.Velox.Interpretation.Core
                                 {
                                     if ((usedGroupsInFrame & mGroup) != 0)
                                     {
-                                        int originalIndex = indexMapPtr[node.Start];
                                         diagnosticBag.Add(new Diagnostic(
                                             code: 301,
-                                            start: originalIndex,
+                                            start: node.Start,
                                             length: node.Length,
                                             severity: Severity.Error
                                         ));
@@ -215,10 +196,9 @@ namespace NG.Velox.Interpretation.Core
                                 {
                                     case 0: machineFlags |= (uint)(1 << 0); break;
                                     default:
-                                        int originalIndex = indexMapPtr[node.Start];
                                         diagnosticBag.Add(new Diagnostic(
                                             code: 304,
-                                            start: originalIndex,
+                                            start: node.Start,
                                             length: node.Length,
                                             severity: Severity.Error
                                         ));
@@ -230,24 +210,28 @@ namespace NG.Velox.Interpretation.Core
                 }
             }
 
-            if (hasArcParams && frameR != 0.0 && frameI == 0.0 && frameJ == 0.0 && frameK == 0.0)
+            // Finalize a trailing block when the source does not end with a structural boundary marker.
+            if (pendingFrameContent)
             {
-                PlaneHelper.CalculateArcCenterFromR(
-                    lastX, lastY, lastZ,
+                if (hasArcParams && frameR != 0.0 && frameI == 0.0 && frameJ == 0.0 && frameK == 0.0)
+                {
+                    PlaneHelper.CalculateArcCenterFromR(
+                        lastX, lastY, lastZ,
+                        currentX, currentY, currentZ,
+                        frameR, activeMotionMode, activePlane,
+                        out frameI, out frameJ, out frameK);
+                }
+
+                framesBuffer[frameCount] = new Frame(
                     currentX, currentY, currentZ,
-                    frameR, activeMotionMode, activePlane,
-                    out frameI, out frameJ, out frameK);
+                    frameI, frameJ, frameK, frameR,
+                    currentFeed,
+                    activeMotionMode, activePlane, isAbsoluteDistance,
+                    hasMotion, hasArcParams);
+
+                machineFramesBuffer[frameCount] = new MachineFrame(machineFlags);
+                frameCount++;
             }
-
-            framesBuffer[frameCount] = new Frame(
-                currentX, currentY, currentZ,
-                frameI, frameJ, frameK, frameR,
-                currentFeed,
-                activeMotionMode, activePlane, isAbsoluteDistance,
-                hasMotion, hasArcParams);
-
-            machineFramesBuffer[frameCount] = new MachineFrame(machineFlags);
-            frameCount++;
 
             context.InterpretationResult = new InterpretationResult(framesBuffer, machineFramesBuffer, frameCount);
         }

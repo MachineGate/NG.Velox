@@ -11,6 +11,16 @@ namespace NG.Velox.Parsing.Core
     using NG.Velox.Parsing.Interfaces;
     using NG.Velox.Preprocessing.Data;
 
+    /// <summary>
+    /// Converts a flat lexical stream into a strictly packed Abstract Syntax Tree (AST) using raw unmanaged pointer arithmetic.
+    /// Collapses empty source lines by emitting <see cref="NodeKind.NewLine"/> markers only at meaningful frame boundaries.
+    /// </summary>
+    /// <remarks>
+    /// <b>Block boundary contract:</b> A <see cref="NodeKind.NewLine"/> node is emitted only when at least one 
+    /// structural node has been successfully produced since the previous block boundary. Consecutive line terminations 
+    /// without intervening content are silently collapsed, and trailing line endings after the final block are never materialized.
+    /// The interpreter therefore always observes a clean alternating sequence: content nodes, then at most one boundary marker.
+    /// </remarks>
     internal sealed unsafe class VeloxParser : IVeloxParser
     {
         /// <inheritdoc/>
@@ -19,7 +29,7 @@ namespace NG.Velox.Parsing.Core
             where TContext : struct, IParsingContext, allows ref struct
         {
             LexingResult lexing = context.LexingResult;
-            
+
             int tokensCount = lexing.Length;
 
             if (tokensCount == 0)
@@ -29,25 +39,37 @@ namespace NG.Velox.Parsing.Core
             }
 
             PreprocessingResult preprocessing = context.PreprocessingResult;
-            
+
             char* textPtr = preprocessing.TextPtr;
-            int* indexMapPtr = preprocessing.IndexMapPtr;
 
             Node* nodesBuffer = ArenaAllocator.Allocate<Node>(ref context.Arena, tokensCount);
             int nodeCount = 0;
 
             var reader = new TokenReader(in lexing);
+            bool blockHasContent = false;
 
             while (!reader.IsEof)
             {
                 Token currentToken = reader.ReadToken();
 
+                if (currentToken.Kind == TokenKind.NewLine)
+                {
+                    if (blockHasContent)
+                    {
+                        nodesBuffer[nodeCount++] = new Node(
+                            NodeKind.NewLine,
+                            currentToken.Start,
+                            (ushort)currentToken.Length);
+                        blockHasContent = false;
+                    }
+                    continue;
+                }
+
                 if (currentToken.Kind == TokenKind.Number)
                 {
-                    int originalIndex = indexMapPtr[currentToken.Start];
                     diagnosticBag.Add(new Diagnostic(
                         code: 201,
-                        start: originalIndex,
+                        start: currentToken.Start,
                         length: currentToken.Length,
                         severity: Severity.Error
                     ));
@@ -62,10 +84,9 @@ namespace NG.Velox.Parsing.Core
 
                     if (Unsafe.IsNullRef(in nextToken) || nextToken.Kind != TokenKind.Number)
                     {
-                        int originalIndex = indexMapPtr[currentToken.Start];
                         diagnosticBag.Add(new Diagnostic(
                             code: 202,
-                            start: originalIndex,
+                            start: currentToken.Start,
                             length: currentToken.Length,
                             severity: Severity.Error
                         ));
@@ -73,6 +94,7 @@ namespace NG.Velox.Parsing.Core
                         if (TryMapNode(addressChar, currentToken.Start, (ushort)currentToken.Length, 0.0, out Node errorNode))
                         {
                             nodesBuffer[nodeCount++] = errorNode;
+                            blockHasContent = true;
                         }
                         continue;
                     }
@@ -86,13 +108,13 @@ namespace NG.Velox.Parsing.Core
                         if (TryMapNode(addressChar, currentToken.Start, (ushort)totalLength, parsedValue, out Node validNode))
                         {
                             nodesBuffer[nodeCount++] = validNode;
+                            blockHasContent = true;
                         }
                         else
                         {
-                            int originalIndex = indexMapPtr[currentToken.Start];
                             diagnosticBag.Add(new Diagnostic(
                                 code: 203,
-                                start: originalIndex,
+                                start: currentToken.Start,
                                 length: currentToken.Length,
                                 severity: Severity.Error
                             ));
@@ -100,10 +122,9 @@ namespace NG.Velox.Parsing.Core
                     }
                     else
                     {
-                        int originalIndex = indexMapPtr[currentToken.Start];
                         diagnosticBag.Add(new Diagnostic(
                             code: 204,
-                            start: originalIndex,
+                            start: currentToken.Start,
                             length: currentToken.Length,
                             severity: Severity.Error
                         ));

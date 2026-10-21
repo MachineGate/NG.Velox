@@ -25,6 +25,12 @@
         /// Indicates the node represents a target displacement axis configuration (X, Y, or Z).
         /// Maps directly to the <see cref="CoordinateKind"/> field in overlapping memory.
         /// </summary>
-        Coordinate
+        Coordinate,
+
+        /// <summary>
+        /// Indicates the node represents a structural block boundary between two non-empty G-code frames.
+        /// The overlapping sub-kind and numeric value fields are semantically unused for this discriminator.
+        /// </summary>
+        NewLine
     }
 }

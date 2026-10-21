@@ -16,19 +16,19 @@ Zero-allocation, high-performance G-code processing pipeline for CNC kinematics,
   - **Hardware**: Packs trajectory into dense binary structures directly in unmanaged memory for zero-copy UART/Ethernet transmission.
   - **Simulation**: Generates unmanaged `SimulationFrame` structs pointing directly to arena memory, eliminating managed DTO materialization overhead.
 - **UVW Plane Normalization**: Unified mathematical path for G17/G18/G19 planes, eliminating redundant code branches.
-- **Accurate Diagnostics**: `IndexMap` tracks preprocessed characters back to original source lines for precise error reporting.
+- **Direct Source Diagnostics**: Every `Diagnostic.Start` is a direct absolute offset into the caller's original text buffer. Row/column resolution is a lazy `IndexMapper.GetRowColumn` call that only pays on the error path, and correctly accounts for line feeds inside parenthesized comments.
 
 ## 🏗 Architecture & Pipeline
 
 The library processes data through a strictly sequential, allocation-free pipeline using a shared `MemoryArena`:
 
-1. **Preprocessor**: Strips comments, N-codes, and whitespace. Builds an `IndexMap` for error tracking. Writes directly to unmanaged memory.
-2. **Lexer**: O(1) character classification via expanded `ushort` bitmask lookup tables (`CharRegistry`).
-3. **Parser**: Generates a dense 16-byte AST `Node` using explicit struct unions. Utilizes a high-performance `TokenReader` cursor.
-4. **Interpreter**: Emulates the CNC VM (modal groups, planes, absolute/relative modes) allocating frames directly in the arena.
+1. **Preprocessor**: A pure format adapter. Copies raw input characters into the arena verbatim — no filtering, no `IndexMap`, no remapping. Any text source (`ReadOnlyMemory<char>`, `Stream`, `byte[]`) is normalized into a raw `char*`.
+2. **Lexer**: Filters trivia inline via four independent `LexingHelper` skip functions (`SkipWhitespaces`, `SkipBlockComment`, `SkipLineComment`, `SkipLineNumber`). O(1) character classification via expanded `ushort` bitmask lookup tables (`CharRegistry`). Emits `TokenKind.NewLine` for structural block boundaries outside comments.
+3. **Parser**: Generates a dense 16-byte AST `Node` using explicit struct unions. Consumes the token stream via `TokenReader` and collapses empty lines — `NodeKind.NewLine` is materialized only between frames that actually contained content.
+4. **Interpreter**: Emulates the CNC VM (modal groups, planes, absolute/relative modes). Frame boundaries are driven exclusively by `NodeKind.NewLine` markers — no character scanning, no row counting, no per-node offset walks. Allocates frames directly in the arena.
 5. **Planner**: Look-Ahead algorithm calculating S-curve entry/exit/cruise velocities in-place.
 6. **Interpolator**: Generates adaptive-step trajectory points using `ArenaList<T>`.
-7. **Postprocessor**: 
+7. **Postprocessor**:
    - *Hardware*: Pre-calculates exact binary size and uses `Buffer.MemoryCopy` for zero-copy blitting.
    - *Simulation*: Outputs unmanaged structs referencing arena pointers.
 
@@ -48,12 +48,13 @@ Tested on `Intel Core i5-10400F`, `.NET 10.0.10`, `X64 RyuJIT AVX2`, `BenchmarkD
 
 ## 💻 Usage Example
 
-In 2.0.0 the API relies on a single `MemoryArena` for all internal allocations. The `PipelineResult` is a lightweight `ref struct` and does not require disposal.
+In 2.0.x the API relies on a single `MemoryArena` for all internal allocations. The `PipelineResult` is a lightweight `ref struct` and does not require disposal.
 
 ### Hardware Pipeline (Binary Output for Microcontrollers)
 
 ```csharp
 using NG.Velox.Factories;
+using NG.Velox.Helpers;
 using NG.Velox.Memory.Core;
 using NG.Velox.Pipeline.Extensions;
 using NG.Velox.Diagnostic.Core;
@@ -73,7 +74,10 @@ try
 
     if (diag.HasErrors)
     {
-        Console.WriteLine($"Error {diag.Diagnostics[0].Code} at index {diag.Diagnostics[0].Start}");
+        // Diagnostic.Start is a direct absolute offset into the original source.
+        var d = diag.Diagnostics[0];
+        var (row, col) = IndexMapper.GetRowColumn(gcode.Span, d.Start);
+        Console.WriteLine($"Error {d.Code} at {row}:{col}");
         return;
     }
 
@@ -96,6 +100,7 @@ finally
 
 ```csharp
 using NG.Velox.Factories;
+using NG.Velox.Helpers;
 using NG.Velox.Memory.Core;
 using NG.Velox.Pipeline.Extensions;
 using NG.Velox.Diagnostic.Core;
@@ -116,7 +121,9 @@ try
 
     if (diag.HasErrors)
     {
-        Console.WriteLine($"Error {diag.Diagnostics[0].Code} at index {diag.Diagnostics[0].Start}");
+        var d = diag.Diagnostics[0];
+        var (row, col) = IndexMapper.GetRowColumn(gcode.Span, d.Start);
+        Console.WriteLine($"Error {d.Code} at {row}:{col}");
         return;
     }
 
@@ -140,8 +147,9 @@ finally
 ## ⚙️ Technical Highlights for Systems Devs
 
 - **Custom Arena Allocator**: `MemoryArena` provides O(1) linear allocation with strict alignment guarantees via `NativeMemory.Alloc`, bypassing the .NET GC entirely.
+- **Symmetric Format Adapters**: The preprocessor and postprocessor are pure boundary shims — the preprocessor copies bytes *into* the arena, the postprocessor packs arena bytes *back out*. All semantic filtering lives in the lexer, not the preprocessor.
 - **Raw Pointer Arithmetic**: Hot paths (Lexing, Parsing, Interpolation) use direct `T*` pointer math, eliminating array index bounds-checking overhead.
-- **Expanded CharMask**: Upgraded from `byte` to `ushort` to natively classify brackets, semicolons, whitespace, newlines, and labels during preprocessing.
+- **Expanded CharMask**: `ushort`-backed bitmask that natively classifies brackets, semicolons, whitespace, newlines, and labels during lexing.
 - **TokenReader**: A high-performance, cursor-based token consumption engine that replaces standard index-based loops.
 - **Struct Unions**: `Node` uses `[StructLayout(LayoutKind.Explicit, Size = 16)]` to overlap enums, reducing AST memory footprint by ~40% and maximizing L1/L2 cache locality.
 - **Branchless Lexing**: `CharRegistry` uses bitwise masks for O(1) character classification without `if/switch` branching.
@@ -152,10 +160,6 @@ finally
 ```bash
 dotnet add package MachineGate.NG.Velox --version 2.0.4
 ```
-
-## 🤝 Contributing
-
-This is a systems-level project. Contributions regarding mathematical edge-cases, SIMD vectorization for the interpolator, or NativeAOT compatibility tests are highly welcome. Please open an issue first to discuss the architectural impact.
 
 > ⚠️ **Validation graphs are not displayed on NuGet.org** due to a rendering issue with embedded PNG images.  
 > You can view the full documentation with all plots on [GitHub](https://github.com/MachineGate/NG.Velox).

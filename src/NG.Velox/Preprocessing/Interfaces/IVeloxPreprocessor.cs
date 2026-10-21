@@ -4,12 +4,13 @@
     using NG.Velox.Diagnostic.Core;
 
     /// <summary>
-    /// Defines the core contract for performance-critical preprocessors responsible for normalizing raw G-code input formats.
+    /// Defines the core contract for high-performance preprocessors responsible for stage-zero data preparation 
+    /// and memory allocation within the processing pipeline.
     /// </summary>
-    /// <typeparam name="TInput">The target source data format type entering the pipeline loop.</typeparam>
+    /// <typeparam name="TInput">The raw source data format type entering the pipeline.</typeparam>
     /// <remarks>
-    /// Implementations of this interface filter incoming characters, strip comments, handle layout spacing, 
-    /// and build initial index mappings completely allocation-free before initiating lexical scanning.
+    /// Implementations of this interface handle initial input ingestion, memory staging (e.g., arena allocation), 
+    /// and schema transformation, preparing the data for subsequent zero-allocation lexical analysis and parsing.
     /// </remarks>
     internal interface IVeloxPreprocessor<TInput>
         where TInput : notnull

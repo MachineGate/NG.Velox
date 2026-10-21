@@ -40,17 +40,18 @@
                 <ColumnDefinition Width="2*"/>
             </Grid.ColumnDefinitions>
 
-            <TextBox Grid.Column="0" 
-                     Text="{Binding CodeText, UpdateSourceTrigger=PropertyChanged}"
-                     AcceptsReturn="True" 
-                     AcceptsTab="True" 
-                     VerticalScrollBarVisibility="Auto" 
-                     HorizontalScrollBarVisibility="Auto"
-                     FontFamily="Consolas" 
-                     FontSize="13" 
-                     Padding="5" 
-                     BorderThickness="0,0,1,0" 
-                     BorderBrush="#CCCCCC"/>
+            <local:CodeEditor Grid.Column="0"
+                         Code="{Binding Code}"
+                         Errors="{Binding Errors}"
+                         AcceptsReturn="True" 
+                         AcceptsTab="True" 
+                         VerticalScrollBarVisibility="Auto" 
+                         HorizontalScrollBarVisibility="Auto"
+                         FontFamily="Consolas" 
+                         FontSize="13" 
+                         Padding="5" 
+                         BorderThickness="0,0,1,0" 
+                         BorderBrush="#CCCCCC"/>        
 
             <GridSplitter Grid.Column="1" 
                           Width="5" 
@@ -179,7 +180,7 @@
                       Background="#E0E0E0"/>
 
         <GroupBox Grid.Row="2" Header="Error log" Margin="5" Padding="0">
-            <ListBox ItemsSource="{Binding ErrorsCollection}" 
+            <ListBox ItemsSource="{Binding Errors}" 
                      Foreground="Red" 
                      FontFamily="Consolas"
                      FontSize="12"

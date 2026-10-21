@@ -7,7 +7,7 @@ namespace NG.Velox.Tests.Preprocessor
     using NG.Velox.Preprocessing.Data;
 
     [TestClass]
-    public class PreprocessorTests
+    public class VeloxPreprocessorTests
     {
         private const int DEFAULT_ARENA_SIZE = 1024 * 1024; // 1 МБ
 
@@ -28,6 +28,7 @@ namespace NG.Velox.Tests.Preprocessor
                 Assert.AreEqual(0, result.Length);
                 Assert.IsTrue(result.Text.IsEmpty);
                 Assert.IsFalse(diag.HasErrors);
+                Assert.IsFalse(diag.HasWarnings);
             }
             finally
             {
@@ -36,154 +37,57 @@ namespace NG.Velox.Tests.Preprocessor
         }
 
         [TestMethod]
-        public void Process_SimpleText_ReturnsIdenticalTextAndIndices()
+        public void Process_CopiesIntoArena_IsolatesResultFromSourceBuffer()
         {
             MemoryArena arena = new(DEFAULT_ARENA_SIZE);
             try
             {
                 DiagnosticBag diag = new();
-                ReadOnlyMemory<char> input = "G01X10".AsMemory();
+                char[] sourceBuffer = "G01X10".ToCharArray();
+                ReadOnlyMemory<char> input = sourceBuffer.AsMemory();
                 VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
 
                 new VeloxMemoryPreprocessor().Process(ref context, ref diag);
 
                 PreprocessingResult result = context.PreprocessingResult;
+                Assert.AreEqual("G01X10", new string(result.Text));
+
+                sourceBuffer[0] = 'M';
+                sourceBuffer[1] = '3';
+                sourceBuffer[2] = '0';
 
                 Assert.AreEqual("G01X10", new string(result.Text));
-                for (int i = 0; i < result.Length; i++)
+                Assert.AreEqual(sourceBuffer.Length, result.Length);
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        [TestMethod]
+        public void Process_MultiLineParenthesesComment_PreservesNewlinesInText()
+        {
+            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
+            try
+            {
+                DiagnosticBag diag = new();
+                ReadOnlyMemory<char> input = "(a\nb\nc)\nG01X10".AsMemory();
+                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
+
+                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
+
+                PreprocessingResult result = context.PreprocessingResult;
+                ReadOnlySpan<char> text = result.Text;
+
+                int newlineCount = 0;
+                for (int i = 0; i < text.Length; i++)
                 {
-                    Assert.AreEqual(i, result.IndexMap[i]);
+                    if (text[i] == '\n') newlineCount++;
                 }
-            }
-            finally
-            {
-                arena.Dispose();
-            }
-        }
 
-        [TestMethod]
-        public void Process_ParenthesesComments_RemovesAndMapsIndices()
-        {
-            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
-            try
-            {
-                DiagnosticBag diag = new();
-                ReadOnlyMemory<char> input = "G01 (comment) X10".AsMemory();
-                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
-
-                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
-
-                PreprocessingResult result = context.PreprocessingResult;
-
-                Assert.AreEqual("G01X10", new string(result.Text));
-
-                Assert.AreEqual(0, result.IndexMap[0]);  // 'G'
-                Assert.AreEqual(1, result.IndexMap[1]);  // '0'
-                Assert.AreEqual(2, result.IndexMap[2]);  // '1'
-                Assert.AreEqual(14, result.IndexMap[3]); // 'X'
-                Assert.AreEqual(15, result.IndexMap[4]); // '1'
-                Assert.AreEqual(16, result.IndexMap[5]); // '0'
-            }
-            finally
-            {
-                arena.Dispose();
-            }
-        }
-
-        [TestMethod]
-        public void Process_SemicolonComments_RemovesButKeepsNewlines()
-        {
-            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
-            try
-            {
-                DiagnosticBag diag = new();
-                ReadOnlyMemory<char> input = "G01 ;comment\nX10".AsMemory();
-                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
-
-                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
-
-                PreprocessingResult result = context.PreprocessingResult;
-
-                Assert.AreEqual("G01\nX10", new string(result.Text));
-
-                Assert.AreEqual(0, result.IndexMap[0]);  // 'G'
-                Assert.AreEqual(1, result.IndexMap[1]);  // '0'
-                Assert.AreEqual(2, result.IndexMap[2]);  // '1'
-                Assert.AreEqual(12, result.IndexMap[3]); // '\n'
-                Assert.AreEqual(13, result.IndexMap[4]); // 'X'
-            }
-            finally
-            {
-                arena.Dispose();
-            }
-        }
-
-        [TestMethod]
-        public void Process_NCodes_RemovesLineNumbers()
-        {
-            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
-            try
-            {
-                DiagnosticBag diag = new();
-                ReadOnlyMemory<char> input = "N10 G01 N20X10".AsMemory();
-                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
-
-                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
-
-                PreprocessingResult result = context.PreprocessingResult;
-
-                Assert.AreEqual("G01X10", new string(result.Text));
-                Assert.AreEqual(4, result.IndexMap[0]);
-            }
-            finally
-            {
-                arena.Dispose();
-            }
-        }
-
-        [TestMethod]
-        public void Process_Whitespaces_RemovesSpacesAndTabsKeepsNewlines()
-        {
-            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
-            try
-            {
-                DiagnosticBag diag = new();
-                ReadOnlyMemory<char> input = "G01 \t X10\r\nY20".AsMemory();
-                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
-
-                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
-
-                PreprocessingResult result = context.PreprocessingResult;
-
-                Assert.AreEqual("G01X10\nY20", new string(result.Text));
-                Assert.AreEqual('\n', result.Text[6]);
-            }
-            finally
-            {
-                arena.Dispose();
-            }
-        }
-
-        [TestMethod]
-        public void Process_ComplexMix_HandlesAllRulesCorrectly()
-        {
-            MemoryArena arena = new(DEFAULT_ARENA_SIZE);
-            try
-            {
-                DiagnosticBag diag = new();
-                ReadOnlyMemory<char> input = "N5 G90 G17 (comment) ; Milling\n N10 G01 X10.5 Y20 F100".AsMemory();
-                VeloxContext<ReadOnlyMemory<char>, byte> context = new(ref input, ref arena);
-
-                new VeloxMemoryPreprocessor().Process(ref context, ref diag);
-
-                PreprocessingResult result = context.PreprocessingResult;
-
-                string cleanText = new(result.Text);
-                Assert.AreEqual("G90G17\nG01X10.5Y20F100", cleanText);
-
-                int newlineIndex = cleanText.IndexOf('\n');
-                Assert.IsGreaterThan(0, newlineIndex);
-                Assert.AreEqual('\n', result.Text[newlineIndex]);
+                Assert.AreEqual(3, newlineCount);
+                Assert.AreEqual(input.Length, result.Length);
             }
             finally
             {
